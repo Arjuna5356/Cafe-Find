@@ -13,7 +13,7 @@ gmaps = googlemaps.Client(key=API_KEY)
 app = Flask(__name__)
 
 # HTML template for the web interface
-HTML_TEMPLATE = """
+HTML_TEMPLATE = 
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,7 +51,7 @@ HTML_TEMPLATE = """
     {% endif %}
 </body>
 </html>
-"""
+
 
 def get_coordinates(location):
     """Convert location string to coordinates."""
