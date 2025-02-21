@@ -1,0 +1,123 @@
+import googlemaps
+from flask import Flask, request, render_template_string
+import requests
+from datetime import datetime
+
+# Replace with your Google Maps API key
+API_KEY = "YOUR_GOOGLE_MAPS_API_KEY"
+
+# Initialize Google Maps client
+gmaps = googlemaps.Client(key=API_KEY)
+
+# Flask app setup
+app = Flask(__name__)
+
+# HTML template for the web interface
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nearest Cheapest Café Finder</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; text-align: center; }
+        h1 { color: #333; }
+        input[type="text"] { padding: 10px; width: 300px; }
+        input[type="submit"] { padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        input[type="submit"]:hover { background-color: #45a049; }
+        .result { margin-top: 20px; text-align: left; display: inline-block; }
+        .cafe { border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Find the Nearest Cheapest Café</h1>
+    <form method="POST">
+        <input type="text" name="location" placeholder="Enter your location (e.g., New York, NY)" required>
+        <input type="submit" value="Search">
+    </form>
+    {% if cafes %}
+    <div class="result">
+        <h2>Results:</h2>
+        {% for cafe in cafes %}
+        <div class="cafe">
+            <strong>{{ cafe['name'] }}</strong><br>
+            Address: {{ cafe['address'] }}<br>
+            Price Level: {{ cafe['price_level'] if cafe['price_level'] else 'Not available' }}<br>
+            Distance: {{ cafe['distance'] }} meters<br>
+            Rating: {{ cafe['rating'] if cafe['rating'] else 'Not rated' }}/5
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</body>
+</html>
+"""
+
+def get_coordinates(location):
+    """Convert location string to coordinates."""
+    try:
+        geocode_result = gmaps.geocode(location)
+        if geocode_result:
+            lat = geocode_result[0]['geometry']['location']['lat']
+            lng = geocode_result[0]['geometry']['location']['lng']
+            return (lat, lng)
+        return None
+    except Exception as e:
+        print(f"Error geocoding location: {e}")
+        return None
+
+def calculate_distance(origin, destination):
+    """Calculate distance between two coordinates in meters."""
+    try:
+        distance_result = gmaps.distance_matrix(origins=origin, destinations=destination, mode="walking")
+        distance = distance_result['rows'][0]['elements'][0]['distance']['value']  # Distance in meters
+        return distance
+    except Exception as e:
+        print(f"Error calculating distance: {e}")
+        return float('inf')  # Return large number if error occurs
+
+def find_nearest_cheapest_cafes(location, radius=5000):
+    """Find nearby cafés and sort by price and distance."""
+    coords = get_coordinates(location)
+    if not coords:
+        return []
+
+    # Search for cafés within the radius (in meters)
+    places_result = gmaps.places_nearby(
+        location=coords,
+        radius=radius,
+        type='cafe'
+    )
+
+    cafes = []
+    for place in places_result.get('results', []):
+        cafe_coords = (place['geometry']['location']['lat'], place['geometry']['location']['lng'])
+        distance = calculate_distance(coords, cafe_coords)
+        
+        cafe_info = {
+            'name': place.get('name', 'Unknown Café'),
+            'address': place.get('vicinity', 'No address available'),
+            'price_level': place.get('price_level', None),  # 0-4 scale, None if unavailable
+            'rating': place.get('rating', None),
+            'distance': distance
+        }
+        cafes.append(cafe_info)
+
+    # Sort by price level (cheapest first) and then by distance
+    cafes.sort(key=lambda x: (x['price_level'] if x['price_level'] is not None else 5, x['distance']))
+
+    # Return top 5 results
+    return cafes[:5]
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    cafes = []
+    if request.method == 'POST':
+        location = request.form.get('location')
+        if location:
+            cafes = find_nearest_cheapest_cafes(location)
+    return render_template_string(HTML_TEMPLATE, cafes=cafes)
+
+if __name__ == '__main__':
+    # Run the Flask app
+    app.run(debug=True, host='0.0.0.0', port=5000)
